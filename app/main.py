@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import date
@@ -32,6 +32,14 @@ class Employee(BaseModel):
 @app.get("/api/employees", response_model=List[Employee])
 def get_employees():
     return employees_db
+
+
+@app.get("/api/employees/{employee_id}", response_model=Employee)
+def get_employee(employee_id: int):
+    for emp in employees_db:
+        if emp.id == employee_id:
+            return emp
+    raise HTTPException(status_code=404, detail="Employee not found")
 
 
 @app.post("/api/employees", status_code=201, response_model=Employee)
