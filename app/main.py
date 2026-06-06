@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import date
 
 app = FastAPI()
@@ -27,6 +27,16 @@ class Employee(BaseModel):
     skill_summary: str
     joined_date: date
     active: bool
+
+
+@app.get("/api/skills/summary", response_model=Dict[str, int])
+def get_skill_summary():
+    counts: Dict[str, int] = {}
+    for emp in employees_db:
+        skills = {s.strip() for s in emp.skill_summary.split(",") if s.strip()}
+        for skill in skills:
+            counts[skill] = counts.get(skill, 0) + 1
+    return counts
 
 
 @app.get("/api/employees", response_model=List[Employee])
