@@ -36,6 +36,22 @@ def get_employees(department: Optional[str] = None):
     return [emp for emp in employees_db if emp.department == department]
 
 
+@app.get("/api/employees/match", response_model=List[Employee])
+def match_employees(
+    skill: Optional[str] = None,
+    experience: Optional[str] = None,
+    role: Optional[str] = None,
+):
+    result = employees_db
+    if skill is not None:
+        result = [emp for emp in result if skill in emp.skill_summary]
+    if experience is not None:
+        result = [emp for emp in result if experience in emp.skill_summary]
+    if role is not None:
+        result = [emp for emp in result if emp.role == role]
+    return result
+
+
 @app.get("/api/employees/{employee_id}", response_model=Employee)
 def get_employee(employee_id: int):
     for emp in employees_db:
