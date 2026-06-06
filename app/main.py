@@ -42,6 +42,16 @@ def get_employee(employee_id: int):
     raise HTTPException(status_code=404, detail="Employee not found")
 
 
+@app.put("/api/employees/{employee_id}", response_model=Employee)
+def update_employee(employee_id: int, employee: EmployeeCreate):
+    for i, emp in enumerate(employees_db):
+        if emp.id == employee_id:
+            updated = Employee(id=employee_id, **employee.model_dump())
+            employees_db[i] = updated
+            return updated
+    raise HTTPException(status_code=404, detail="Employee not found")
+
+
 @app.post("/api/employees", status_code=201, response_model=Employee)
 def create_employee(employee: EmployeeCreate):
     global next_id
