@@ -30,8 +30,10 @@ class Employee(BaseModel):
 
 
 @app.get("/api/employees", response_model=List[Employee])
-def get_employees():
-    return employees_db
+def get_employees(department: Optional[str] = None):
+    if department is None:
+        return employees_db
+    return [emp for emp in employees_db if emp.department == department]
 
 
 @app.get("/api/employees/{employee_id}", response_model=Employee)
