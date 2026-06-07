@@ -45,7 +45,7 @@ uvicorn app.main:app --reload
 pytest
 ```
 
-現在 **29件** のテストがあります。
+現在 **60件** のテストがあります。
 
 ## API一覧
 
@@ -61,11 +61,14 @@ GET /api/employees/match
 
 | パラメータ | 型 | 説明 | マッチ方式 |
 |------------|------|------|------|
-| skill | string | 保有スキルで絞り込む | `skill_summary` に部分一致 |
+| skill | string（複数指定可） | 保有スキルで絞り込む | `skill_summary` に部分一致 |
+| skill_match | string（`and` / `or`、デフォルト: `and`） | `skill`を複数指定した場合の結合方法 | - |
 | experience | string | 開発経験で絞り込む | `skill_summary` に部分一致 |
 | role | string | 職種で絞り込む | `role` に完全一致 |
 
-- 複数パラメータを指定した場合は **AND条件** で絞り込む
+- `skill`は `?skill=Python&skill=FastAPI` のように複数指定できる。`skill_match=and`なら指定した全スキル、`skill_match=or`ならいずれかのスキルを保有する社員に絞り込む
+- `skill`/`experience`/`role`など異なる種類のパラメータを併用した場合は **AND条件** で絞り込む
+- `skill_match`に`and`/`or`以外の値を指定した場合は `422 Unprocessable Entity`
 - パラメータ未指定の場合は全社員を返す
 - 該当なしの場合は空配列を返す
 
@@ -164,6 +167,39 @@ DELETE /api/employees/{employee_id}
 レスポンス: `204 No Content`  
 存在しないIDの場合: `404 Not Found`
 
+---
+
+### スキル別経験年数管理（employee_skills）
+
+社員ごとに「スキル名」と「経験年数」を構造化データとして登録・取得・更新・削除できる。`skill_summary`（自由記述）とは独立して管理される。
+
+```
+POST   /api/employees/{employee_id}/skills
+GET    /api/employees/{employee_id}/skills
+PUT    /api/employees/{employee_id}/skills/{skill_id}
+DELETE /api/employees/{employee_id}/skills/{skill_id}
+```
+
+リクエストボディ（POST/PUT共通）:
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| skill_name | string | ✓ | スキル名（空文字不可） |
+| years | integer | ✓ | 経験年数（0以上） |
+
+- 同一社員内で同じ`skill_name`を重複登録した場合は `409 Conflict`
+- 存在しない`employee_id`または`skill_id`を指定した場合は `404 Not Found`
+- 必須項目の欠如や不正な値（空文字、負の値など）の場合は `422 Unprocessable Entity`
+
+レスポンス:
+
+| メソッド | 成功時のステータス | 内容 |
+|------|------|------|
+| POST | `201 Created` | 登録したスキル情報 |
+| GET | `200 OK` | スキル情報の配列（0件の場合は空配列） |
+| PUT | `200 OK` | 更新後のスキル情報 |
+| DELETE | `204 No Content` | （ボディなし） |
+
 ## レスポンス形式（Employee）
 
 ```json
@@ -175,6 +211,17 @@ DELETE /api/employees/{employee_id}
   "skill_summary": "営業スキル、顧客対応",
   "joined_date": "2024-01-01",
   "active": true
+}
+```
+
+## レスポンス形式（EmployeeSkill）
+
+```json
+{
+  "id": 1,
+  "employee_id": 1,
+  "skill_name": "Python",
+  "years": 3
 }
 ```
 
