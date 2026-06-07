@@ -160,3 +160,60 @@ def get_employee_skills(employee_id: int, db: Session = Depends(get_db)):
         .filter(models.EmployeeSkill.employee_id == employee_id)
         .all()
     )
+
+
+@app.put("/api/employees/{employee_id}/skills/{skill_id}", response_model=EmployeeSkill)
+def update_employee_skill(employee_id: int, skill_id: int, skill: EmployeeSkillCreate, db: Session = Depends(get_db)):
+    employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+    if employee is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    target = (
+        db.query(models.EmployeeSkill)
+        .filter(
+            models.EmployeeSkill.id == skill_id,
+            models.EmployeeSkill.employee_id == employee_id,
+        )
+        .first()
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    duplicate = (
+        db.query(models.EmployeeSkill)
+        .filter(
+            models.EmployeeSkill.employee_id == employee_id,
+            models.EmployeeSkill.skill_name == skill.skill_name,
+            models.EmployeeSkill.id != skill_id,
+        )
+        .first()
+    )
+    if duplicate is not None:
+        raise HTTPException(status_code=409, detail="Skill already registered")
+
+    target.skill_name = skill.skill_name
+    target.years = skill.years
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+@app.delete("/api/employees/{employee_id}/skills/{skill_id}", status_code=204)
+def delete_employee_skill(employee_id: int, skill_id: int, db: Session = Depends(get_db)):
+    employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+    if employee is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    target = (
+        db.query(models.EmployeeSkill)
+        .filter(
+            models.EmployeeSkill.id == skill_id,
+            models.EmployeeSkill.employee_id == employee_id,
+        )
+        .first()
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    db.delete(target)
+    db.commit()
