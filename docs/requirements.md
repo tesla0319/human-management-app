@@ -85,6 +85,7 @@
 | skill_name | String | スキル名 (必須) |
 | years | Integer | 経験年数 (必須, デフォルト: 0) |
 
+- years は0以上の整数。`years=0` は「該当スキルを保有しているが、経験1年未満」を表し、スキルを保有していない場合は `years=0` ではなく `employee_skills` にレコードが存在しない状態で表す
 - employee_id + skill_name の組み合わせに一意制約
 - skill_summary（自由記述）とは独立した構造化データとして管理する
 

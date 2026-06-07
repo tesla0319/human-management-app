@@ -187,6 +187,8 @@ DELETE /api/employees/{employee_id}/skills/{skill_id}
 | skill_name | string | ✓ | スキル名（空文字不可） |
 | years | integer | ✓ | 経験年数（0以上） |
 
+- `years=0` は「該当スキルを保有しているが、経験1年未満」を表す。スキルを保有していない場合は `years=0` ではなく、`employee_skills` にレコードが存在しない状態で表す
+- マッチング検索（`GET /api/employees/match`）で `skill=Python` のようにスキル名のみを指定した場合は、経験年数に関わらずPython保有者が対象となる。経験年数を条件にしたい場合は `skill_requirements=Python:0`（保有者全員、1年未満を含む）や `skill_requirements=Python:3`（3年以上）のように指定する
 - 同一社員内で同じ`skill_name`を重複登録した場合は `409 Conflict`
 - 存在しない`employee_id`または`skill_id`を指定した場合は `404 Not Found`
 - 必須項目の欠如や不正な値（空文字、負の値など）の場合は `422 Unprocessable Entity`
