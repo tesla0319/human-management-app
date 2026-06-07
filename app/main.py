@@ -65,6 +65,31 @@ def get_employees(department: Optional[str] = None, db: Session = Depends(get_db
     return query.all()
 
 
+def _parse_skill_requirements(raw: str):
+    """'skill_name:years' のカンマ区切り文字列を [(skill_name, years), ...] に変換する。
+    形式が不正な場合は422を返す"""
+    requirements = []
+    for part in raw.split(","):
+        if ":" not in part:
+            raise HTTPException(
+                status_code=422,
+                detail="skill_requirements must be in 'skill_name:years' format",
+            )
+        name, _, years_str = part.partition(":")
+        name = name.strip()
+        years_str = years_str.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="skill_name must not be empty")
+        try:
+            years = int(years_str)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="years must be an integer")
+        if years < 0:
+            raise HTTPException(status_code=422, detail="years must be 0 or greater")
+        requirements.append((name, years))
+    return requirements
+
+
 @app.get("/api/employees/match", response_model=List[Employee])
 def match_employees(
     skill: Optional[List[str]] = Query(None),
@@ -72,25 +97,43 @@ def match_employees(
     experience: Optional[str] = None,
     role: Optional[str] = None,
     min_years: Optional[int] = Query(None, ge=0),
+    skill_requirements: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Employee)
     if role is not None:
         query = query.filter(models.Employee.role == role)
     result = query.all()
-    if skill:
+
+    def has_skill_with_min_years(emp, skill_name, years):
+        return (
+            db.query(models.EmployeeSkill)
+            .filter(
+                models.EmployeeSkill.employee_id == emp.id,
+                models.EmployeeSkill.skill_name == skill_name,
+                models.EmployeeSkill.years >= years,
+            )
+            .first()
+            is not None
+        )
+
+    if skill_requirements is not None:
+        requirements = _parse_skill_requirements(skill_requirements)
+
+        if skill_match == "or":
+            result = [
+                emp for emp in result
+                if any(has_skill_with_min_years(emp, name, years) for name, years in requirements)
+            ]
+        else:
+            result = [
+                emp for emp in result
+                if all(has_skill_with_min_years(emp, name, years) for name, years in requirements)
+            ]
+    elif skill:
         if min_years is not None:
             def skill_matches(emp, s):
-                return (
-                    db.query(models.EmployeeSkill)
-                    .filter(
-                        models.EmployeeSkill.employee_id == emp.id,
-                        models.EmployeeSkill.skill_name == s,
-                        models.EmployeeSkill.years >= min_years,
-                    )
-                    .first()
-                    is not None
-                )
+                return has_skill_with_min_years(emp, s, min_years)
         else:
             def skill_matches(emp, s):
                 return s in emp.skill_summary

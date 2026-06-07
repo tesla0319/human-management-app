@@ -230,3 +230,110 @@ class TestEmployeeMatchByExperienceYears:
         response = client.get("/api/employees/match?skill=Python&min_years=-1")
 
         assert response.status_code == 422
+
+
+@pytest.fixture
+def employees_with_skill_requirements(client):
+    """employee_skillsに経験年数を登録済みの社員2名を作成する
+    田中太郎: Python=5年, SQL=3年（Python:5, SQL:2 の両方を満たす）
+    鈴木次郎: Python=2年, SQL=5年（SQL:2 のみ満たす）
+    """
+    tanaka = client.post("/api/employees", json={
+        "name": "田中太郎",
+        "department": "開発部",
+        "role": "エンジニア",
+        "skill_summary": "Python, SQL",
+        "joined_date": "2024-01-01",
+    }).json()
+    suzuki = client.post("/api/employees", json={
+        "name": "鈴木次郎",
+        "department": "開発部",
+        "role": "エンジニア",
+        "skill_summary": "Python, SQL",
+        "joined_date": "2024-02-01",
+    }).json()
+
+    client.post(f"/api/employees/{tanaka['id']}/skills", json={"skill_name": "Python", "years": 5})
+    client.post(f"/api/employees/{tanaka['id']}/skills", json={"skill_name": "SQL", "years": 3})
+    client.post(f"/api/employees/{suzuki['id']}/skills", json={"skill_name": "Python", "years": 2})
+    client.post(f"/api/employees/{suzuki['id']}/skills", json={"skill_name": "SQL", "years": 5})
+
+
+class TestEmployeeMatchBySkillRequirements:
+    def test_single_requirement_meets_condition_is_included(self, client, employees_with_skill_requirements):
+        """skill_requirements=Python:5 で条件(Python>=5年)を満たす社員が返る"""
+        response = client.get("/api/employees/match?skill_requirements=Python:5")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "田中太郎" in names
+
+    def test_single_requirement_below_condition_is_excluded(self, client, employees_with_skill_requirements):
+        """skill_requirements=Python:5 で条件未満(Python<5年)の社員は返らない"""
+        response = client.get("/api/employees/match?skill_requirements=Python:5")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "鈴木次郎" not in names
+
+    def test_multiple_requirements_and_all_met_is_included(self, client, employees_with_skill_requirements):
+        """skill_requirements=Python:5,SQL:2 & skill_match=and で全条件を満たす社員が返る"""
+        response = client.get("/api/employees/match?skill_requirements=Python:5,SQL:2&skill_match=and")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "田中太郎" in names
+
+    def test_multiple_requirements_and_one_unmet_is_excluded(self, client, employees_with_skill_requirements):
+        """skill_requirements=Python:5,SQL:2 & skill_match=and で一部条件未満の社員は返らない"""
+        response = client.get("/api/employees/match?skill_requirements=Python:5,SQL:2&skill_match=and")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "鈴木次郎" not in names
+
+    def test_multiple_requirements_or_one_met_is_included(self, client, employees_with_skill_requirements):
+        """skill_requirements=Python:5,SQL:2 & skill_match=or で一部条件を満たす社員が返る"""
+        response = client.get("/api/employees/match?skill_requirements=Python:5,SQL:2&skill_match=or")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "鈴木次郎" in names
+
+    def test_skill_requirements_takes_precedence_over_skill_and_min_years(
+        self, client, employees_with_skill_requirements
+    ):
+        """skill/min_yearsだけなら両者とも該当するが、skill_requirementsが優先されるため
+        条件を満たさない鈴木次郎は除外される"""
+        response = client.get(
+            "/api/employees/match?skill=Python&min_years=1&skill_requirements=Python:5"
+        )
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "田中太郎" in names
+        assert "鈴木次郎" not in names
+
+    def test_skill_requirements_negative_years_returns_422(self, client, employees_with_skill_requirements):
+        """skill_requirements=Python:-1 はバリデーションエラーになる"""
+        response = client.get("/api/employees/match?skill_requirements=Python:-1")
+
+        assert response.status_code == 422
+
+    def test_skill_requirements_non_integer_years_returns_422(self, client, employees_with_skill_requirements):
+        """skill_requirements=Python:abc はバリデーションエラーになる"""
+        response = client.get("/api/employees/match?skill_requirements=Python:abc")
+
+        assert response.status_code == 422
+
+    def test_skill_requirements_missing_colon_returns_422(self, client, employees_with_skill_requirements):
+        """コロンがないskill_requirements=Python はバリデーションエラーになる"""
+        response = client.get("/api/employees/match?skill_requirements=Python")
+
+        assert response.status_code == 422
+
+    def test_skill_requirements_empty_skill_name_returns_422(self, client, employees_with_skill_requirements):
+        """skill_nameが空のskill_requirements=:3 はバリデーションエラーになる"""
+        response = client.get("/api/employees/match?skill_requirements=:3")
+
+        assert response.status_code == 422
