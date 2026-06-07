@@ -9,11 +9,8 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def reset_employees():
-    import app.main as main
-
-    main.employees_db.clear()
-    main.next_id = 1
+def reset_employees(reset_employee_table):
+    pass
 
 
 class TestEmployeeSearch:

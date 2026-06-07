@@ -1,18 +1,15 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
 from typing import Optional, List, Dict
 from datetime import date
 
 from app import models
-from app.database import engine
+from app.database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-
-# インメモリストレージ
-employees_db = []
-next_id = 1
 
 
 class EmployeeCreate(BaseModel):
@@ -25,6 +22,8 @@ class EmployeeCreate(BaseModel):
 
 
 class Employee(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     department: str
@@ -35,9 +34,9 @@ class Employee(BaseModel):
 
 
 @app.get("/api/skills/summary", response_model=Dict[str, int])
-def get_skill_summary():
+def get_skill_summary(db: Session = Depends(get_db)):
     counts: Dict[str, int] = {}
-    for emp in employees_db:
+    for emp in db.query(models.Employee).all():
         skills = {s.strip() for s in emp.skill_summary.split(",") if s.strip()}
         for skill in skills:
             counts[skill] = counts.get(skill, 0) + 1
@@ -45,10 +44,11 @@ def get_skill_summary():
 
 
 @app.get("/api/employees", response_model=List[Employee])
-def get_employees(department: Optional[str] = None):
-    if department is None:
-        return employees_db
-    return [emp for emp in employees_db if emp.department == department]
+def get_employees(department: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(models.Employee)
+    if department is not None:
+        query = query.filter(models.Employee.department == department)
+    return query.all()
 
 
 @app.get("/api/employees/match", response_model=List[Employee])
@@ -56,59 +56,52 @@ def match_employees(
     skill: Optional[str] = None,
     experience: Optional[str] = None,
     role: Optional[str] = None,
+    db: Session = Depends(get_db),
 ):
-    result = employees_db
+    query = db.query(models.Employee)
+    if role is not None:
+        query = query.filter(models.Employee.role == role)
+    result = query.all()
     if skill is not None:
         result = [emp for emp in result if skill in emp.skill_summary]
     if experience is not None:
         result = [emp for emp in result if experience in emp.skill_summary]
-    if role is not None:
-        result = [emp for emp in result if emp.role == role]
     return result
 
 
 @app.get("/api/employees/{employee_id}", response_model=Employee)
-def get_employee(employee_id: int):
-    for emp in employees_db:
-        if emp.id == employee_id:
-            return emp
-    raise HTTPException(status_code=404, detail="Employee not found")
+def get_employee(employee_id: int, db: Session = Depends(get_db)):
+    emp = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return emp
 
 
 @app.put("/api/employees/{employee_id}", response_model=Employee)
-def update_employee(employee_id: int, employee: EmployeeCreate):
-    for i, emp in enumerate(employees_db):
-        if emp.id == employee_id:
-            updated = Employee(id=employee_id, **employee.model_dump())
-            employees_db[i] = updated
-            return updated
-    raise HTTPException(status_code=404, detail="Employee not found")
+def update_employee(employee_id: int, employee: EmployeeCreate, db: Session = Depends(get_db)):
+    emp = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    for key, value in employee.model_dump().items():
+        setattr(emp, key, value)
+    db.commit()
+    db.refresh(emp)
+    return emp
 
 
 @app.delete("/api/employees/{employee_id}", status_code=204)
-def delete_employee(employee_id: int):
-    for i, emp in enumerate(employees_db):
-        if emp.id == employee_id:
-            employees_db.pop(i)
-            return
-    raise HTTPException(status_code=404, detail="Employee not found")
+def delete_employee(employee_id: int, db: Session = Depends(get_db)):
+    emp = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    db.delete(emp)
+    db.commit()
 
 
 @app.post("/api/employees", status_code=201, response_model=Employee)
-def create_employee(employee: EmployeeCreate):
-    global next_id
-    
-    new_employee = Employee(
-        id=next_id,
-        name=employee.name,
-        department=employee.department,
-        role=employee.role,
-        skill_summary=employee.skill_summary,
-        joined_date=employee.joined_date,
-        active=employee.active
-    )
-    
-    employees_db.append(new_employee)
-    next_id += 1
-    
+def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db)):
+    new_employee = models.Employee(**employee.model_dump())
+    db.add(new_employee)
+    db.commit()
+    db.refresh(new_employee)
     return new_employee
