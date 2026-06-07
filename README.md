@@ -1,6 +1,6 @@
 # 人材管理アプリ MVP
 
-社員情報をCRUD管理するREST API。スキル・経験によるマッチング検索にも対応。
+社員情報をCRUD管理するREST API。スキル・経験・職種によるマッチング検索やスキル集計にも対応し、データはSQLiteに永続化される。
 
 ## 技術スタック
 
@@ -8,7 +8,7 @@
 |------|------|
 | 言語 | Python 3.x |
 | フレームワーク | FastAPI |
-| データ管理 | インメモリ（起動中のみ保持） |
+| データ管理 | SQLite（SQLAlchemy経由で永続化） |
 | テスト | pytest |
 
 ## セットアップ
@@ -19,7 +19,7 @@ python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
 # 依存パッケージのインストール
-pip install fastapi uvicorn pytest httpx
+pip install fastapi uvicorn pytest httpx sqlalchemy
 ```
 
 ## 起動
@@ -33,13 +33,19 @@ uvicorn app.main:app --reload
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
+### データベースについて
+
+初回起動時にプロジェクトルートへ SQLiteファイル `employees.db` が自動生成され、社員データはここに保存されます。アプリを再起動してもデータは保持されます。
+
+`employees.db` は `.gitignore` に登録されており、git管理対象外です（各自の環境で自動生成されるため、コミット不要・コミット不可）。
+
 ## テスト実行
 
 ```bash
 pytest
 ```
 
-現在 **23件** のテストがあります。
+現在 **29件** のテストがあります。
 
 ## API一覧
 
@@ -70,6 +76,21 @@ GET /api/employees/match
 
 ---
 
+### スキル集計
+
+```
+GET /api/skills/summary
+```
+
+全社員の `skill_summary` をカンマ区切りで分解し、スキルごとの保有人数を集計する。
+
+- 同一社員内で同じスキルが重複していても1人として数える
+- 各項目の前後の空白は除去して集計する
+
+レスポンス: `200 OK` — 例: `{"Python": 2, "FastAPI": 1, "Docker": 1}`
+
+---
+
 ### 社員登録
 
 ```
@@ -91,11 +112,20 @@ POST /api/employees
 
 ---
 
-### 社員一覧取得
+### 社員一覧取得・部署検索
 
 ```
 GET /api/employees
 ```
+
+クエリパラメータ:
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| department | string | | 指定した部署の社員のみに絞り込む（完全一致） |
+
+- `department` 未指定の場合は全社員を返す
+- 該当なしの場合は空配列を返す
 
 レスポンス: `200 OK` — 社員情報の配列
 
@@ -150,6 +180,5 @@ DELETE /api/employees/{employee_id}
 
 ## 現時点の制約
 
-- **DB永続化なし** — サーバー再起動でデータはリセットされる
 - **認証なし** — 全エンドポイントが認証なしでアクセス可能
 - **画面なし** — APIのみ提供（UIは対象外）
