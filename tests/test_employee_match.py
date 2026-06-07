@@ -9,7 +9,7 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def reset_employees(reset_employee_table):
+def reset_employees(reset_employee_skill_table, reset_employee_table):
     pass
 
 
@@ -144,5 +144,89 @@ class TestEmployeeMatch:
     def test_match_skill_match_invalid_value_returns_422(self, client, employees):
         """skill_matchに and/or 以外の値を渡すとバリデーションエラーになる"""
         response = client.get("/api/employees/match?skill=Python&skill_match=invalid")
+
+        assert response.status_code == 422
+
+
+@pytest.fixture
+def employees_with_skill_years(client):
+    """employee_skillsに経験年数を登録済みの社員2名を作成する
+    田中太郎: Python=5年, FastAPI=4年（両方ともmin_years=3を満たす）
+    鈴木次郎: Python=2年, FastAPI=5年（Pythonのみmin_years=3を満たさない）
+    """
+    tanaka = client.post("/api/employees", json={
+        "name": "田中太郎",
+        "department": "開発部",
+        "role": "エンジニア",
+        "skill_summary": "Python, FastAPI",
+        "joined_date": "2024-01-01",
+    }).json()
+    suzuki = client.post("/api/employees", json={
+        "name": "鈴木次郎",
+        "department": "開発部",
+        "role": "エンジニア",
+        "skill_summary": "Python, FastAPI",
+        "joined_date": "2024-02-01",
+    }).json()
+
+    client.post(f"/api/employees/{tanaka['id']}/skills", json={"skill_name": "Python", "years": 5})
+    client.post(f"/api/employees/{tanaka['id']}/skills", json={"skill_name": "FastAPI", "years": 4})
+    client.post(f"/api/employees/{suzuki['id']}/skills", json={"skill_name": "Python", "years": 2})
+    client.post(f"/api/employees/{suzuki['id']}/skills", json={"skill_name": "FastAPI", "years": 5})
+
+
+class TestEmployeeMatchByExperienceYears:
+    def test_single_skill_meets_min_years_is_included(self, client, employees_with_skill_years):
+        """単一スキルでmin_years以上なら結果に含まれる"""
+        response = client.get("/api/employees/match?skill=Python&min_years=3")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "田中太郎" in names
+
+    def test_single_skill_below_min_years_is_excluded(self, client, employees_with_skill_years):
+        """単一スキルでmin_years未満なら結果に含まれない"""
+        response = client.get("/api/employees/match?skill=Python&min_years=3")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "鈴木次郎" not in names
+
+    def test_multiple_skills_and_all_meet_min_years_is_included(self, client, employees_with_skill_years):
+        """複数スキル+skill_match=andで全スキルがmin_years以上なら結果に含まれる"""
+        response = client.get("/api/employees/match?skill=Python&skill=FastAPI&skill_match=and&min_years=3")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "田中太郎" in names
+
+    def test_multiple_skills_and_one_below_min_years_is_excluded(self, client, employees_with_skill_years):
+        """複数スキル+skill_match=andで一部スキルがmin_years未満なら結果に含まれない"""
+        response = client.get("/api/employees/match?skill=Python&skill=FastAPI&skill_match=and&min_years=3")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "鈴木次郎" not in names
+
+    def test_multiple_skills_or_one_meets_min_years_is_included(self, client, employees_with_skill_years):
+        """複数スキル+skill_match=orでいずれかのスキルがmin_years以上なら結果に含まれる"""
+        response = client.get("/api/employees/match?skill=Python&skill=FastAPI&skill_match=or&min_years=3")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "鈴木次郎" in names
+
+    def test_min_years_not_specified_keeps_existing_behavior(self, client, employees_with_skill_years):
+        """min_years未指定時はskill_summaryへの部分一致という既存仕様のまま動作する"""
+        response = client.get("/api/employees/match?skill=Python")
+
+        assert response.status_code == 200
+        names = [e["name"] for e in response.json()]
+        assert "田中太郎" in names
+        assert "鈴木次郎" in names
+
+    def test_min_years_negative_returns_422(self, client, employees_with_skill_years):
+        """min_yearsに負の値を渡すとバリデーションエラーになる"""
+        response = client.get("/api/employees/match?skill=Python&min_years=-1")
 
         assert response.status_code == 422

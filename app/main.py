@@ -71,6 +71,7 @@ def match_employees(
     skill_match: Literal["and", "or"] = "and",
     experience: Optional[str] = None,
     role: Optional[str] = None,
+    min_years: Optional[int] = Query(None, ge=0),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Employee)
@@ -78,10 +79,26 @@ def match_employees(
         query = query.filter(models.Employee.role == role)
     result = query.all()
     if skill:
-        if skill_match == "or":
-            result = [emp for emp in result if any(s in emp.skill_summary for s in skill)]
+        if min_years is not None:
+            def skill_matches(emp, s):
+                return (
+                    db.query(models.EmployeeSkill)
+                    .filter(
+                        models.EmployeeSkill.employee_id == emp.id,
+                        models.EmployeeSkill.skill_name == s,
+                        models.EmployeeSkill.years >= min_years,
+                    )
+                    .first()
+                    is not None
+                )
         else:
-            result = [emp for emp in result if all(s in emp.skill_summary for s in skill)]
+            def skill_matches(emp, s):
+                return s in emp.skill_summary
+
+        if skill_match == "or":
+            result = [emp for emp in result if any(skill_matches(emp, s) for s in skill)]
+        else:
+            result = [emp for emp in result if all(skill_matches(emp, s) for s in skill)]
     if experience is not None:
         result = [emp for emp in result if experience in emp.skill_summary]
     return result
