@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Literal
 from datetime import date
 
 from app import models
@@ -53,7 +53,8 @@ def get_employees(department: Optional[str] = None, db: Session = Depends(get_db
 
 @app.get("/api/employees/match", response_model=List[Employee])
 def match_employees(
-    skill: Optional[str] = None,
+    skill: Optional[List[str]] = Query(None),
+    skill_match: Literal["and", "or"] = "and",
     experience: Optional[str] = None,
     role: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -62,8 +63,11 @@ def match_employees(
     if role is not None:
         query = query.filter(models.Employee.role == role)
     result = query.all()
-    if skill is not None:
-        result = [emp for emp in result if skill in emp.skill_summary]
+    if skill:
+        if skill_match == "or":
+            result = [emp for emp in result if any(s in emp.skill_summary for s in skill)]
+        else:
+            result = [emp for emp in result if all(s in emp.skill_summary for s in skill)]
     if experience is not None:
         result = [emp for emp in result if experience in emp.skill_summary]
     return result
