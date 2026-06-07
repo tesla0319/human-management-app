@@ -58,11 +58,16 @@ def get_skill_summary(db: Session = Depends(get_db)):
 
 
 @app.get("/api/employees", response_model=List[Employee])
-def get_employees(department: Optional[str] = None, db: Session = Depends(get_db)):
+def get_employees(
+    department: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
     query = db.query(models.Employee)
     if department is not None:
         query = query.filter(models.Employee.department == department)
-    return query.all()
+    return query.order_by(models.Employee.id).offset((page - 1) * limit).limit(limit).all()
 
 
 def _parse_skill_requirements(raw: str):
