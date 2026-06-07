@@ -3,6 +3,11 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 from datetime import date
 
+from app import models
+from app.database import engine
+
+models.Base.metadata.create_all(bind=engine)
+
 app = FastAPI()
 
 # インメモリストレージ
