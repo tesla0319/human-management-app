@@ -123,3 +123,40 @@ def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_employee)
     return new_employee
+
+
+@app.post("/api/employees/{employee_id}/skills", status_code=201, response_model=EmployeeSkill)
+def create_employee_skill(employee_id: int, skill: EmployeeSkillCreate, db: Session = Depends(get_db)):
+    employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+    if employee is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    existing = (
+        db.query(models.EmployeeSkill)
+        .filter(
+            models.EmployeeSkill.employee_id == employee_id,
+            models.EmployeeSkill.skill_name == skill.skill_name,
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Skill already registered")
+
+    new_skill = models.EmployeeSkill(employee_id=employee_id, **skill.model_dump())
+    db.add(new_skill)
+    db.commit()
+    db.refresh(new_skill)
+    return new_skill
+
+
+@app.get("/api/employees/{employee_id}/skills", response_model=List[EmployeeSkill])
+def get_employee_skills(employee_id: int, db: Session = Depends(get_db)):
+    employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+    if employee is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    return (
+        db.query(models.EmployeeSkill)
+        .filter(models.EmployeeSkill.employee_id == employee_id)
+        .all()
+    )
