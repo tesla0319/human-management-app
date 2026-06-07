@@ -17,3 +17,15 @@ def reset_employee_table():
     finally:
         db.close()
     yield
+
+
+@pytest.fixture
+def reset_employee_skill_table():
+    """SQLiteのemployee_skillsテーブルを空の状態にする"""
+    db = SessionLocal()
+    try:
+        db.query(models.EmployeeSkill).delete()
+        db.commit()
+    finally:
+        db.close()
+    yield

@@ -33,6 +33,20 @@ class Employee(BaseModel):
     active: bool
 
 
+class EmployeeSkillCreate(BaseModel):
+    skill_name: str = Field(..., min_length=1)
+    years: int = Field(..., ge=0)
+
+
+class EmployeeSkill(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    employee_id: int
+    skill_name: str
+    years: int
+
+
 @app.get("/api/skills/summary", response_model=Dict[str, int])
 def get_skill_summary(db: Session = Depends(get_db)):
     counts: Dict[str, int] = {}
